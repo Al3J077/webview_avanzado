@@ -5,7 +5,7 @@ import React, { useRef, useEffect, useState } from "react";
 
 export default function App() {
   const canvasRef = useRef(null);
-  const touchAreaRef = useRef(null); // 🚨 CORRECCIÓN CLAVE: Nueva ref para el área de toque/canvas
+  const touchAreaRef = useRef(null); // Ref para el área de toque/canvas (DIV)
   const rafRef = useRef(null);
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
@@ -16,46 +16,44 @@ export default function App() {
 
   // Seed structure: { x, y, size, life, hueBase, id }
 
-  // 🚨 CORRECCIÓN CLAVE: Función que maneja el toque/click.
+  // Función que maneja el toque/click.
   const handleCanvasDown = (e) => {
     // ESTA LÍNEA AHORA FUNCIONARÁ sin la advertencia, ya que el listener no es pasivo.
     e.preventDefault(); 
     
     // Se usa 'e.touches' para eventos táctiles y 'e' para eventos de ratón
+    // Nota: e.touches[0] solo existe si es un evento táctil
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     
     plantSeed(clientX, clientY);
   };
   
-  // 🚨 CORRECCIÓN CLAVE: useEffect para registrar el listener nativo con { passive: false }
+  // useEffect para registrar el listener nativo con { passive: false }
   useEffect(() => {
     const canvas = canvasRef.current;
+    
+    // --- Lógica de inicialización y redibujo de Canvas (omitiendo por brevedad) ---
     const ctx = canvas.getContext("2d");
     let width = canvas.width = canvas.clientWidth * devicePixelRatio;
     let height = canvas.height = canvas.clientHeight * devicePixelRatio;
     ctx.scale(devicePixelRatio, devicePixelRatio);
 
-    // --- LÓGICA DE CANVAS (RequestAnimationFrame) ---
     const draw = (t) => {
       if (!running) return;
       // clear with slight alpha to create trailing effect
       ctx.fillStyle = "rgba(3,6,12,0.12)"; // very dark translucent
       ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 
-      // optional grid
       if (showGrid) drawGrid(ctx, canvas.clientWidth, canvas.clientHeight);
 
-      // update seeds
       const now = performance.now();
       let updated = false;
       for (let i = seeds.length - 1; i >= 0; i--) {
         const s = seeds[i];
         s.life += 0.02 * speed;
-        // growth algorithm: size grows with diminishing returns
         s.size += (0.3 * speed) * (1 - s.size / 150) * (s.life < 10 ? 1 : 0.1);
 
-        // spawn micro-pixels around seed probabilistically
         const spawnCount = Math.floor((Math.random() + s.life * 0.05) * (speed * 0.5));
         for (let k = 0; k < spawnCount; k++) {
           const angle = Math.random() * Math.PI * 2;
@@ -67,19 +65,16 @@ export default function App() {
           drawPixel(ctx, px, py, Math.max(1, brush * (0.3 + Math.random() * 0.8)), hue, alpha);
         }
 
-        // subtle pulsing ring
         if (Math.random() < 0.08 * speed) {
           drawRing(ctx, s.x, s.y, s.size * (0.9 + Math.random() * 0.4), s.hueBase * 360, 0.08);
         }
 
-        // remove seed when size too big or life too long
         if (s.life > 120 || s.size > 220) {
           seeds.splice(i, 1);
           updated = true;
         }
       }
 
-      // background stars / noise
       for (let i = 0; i < 2 * speed; i++) {
         if (Math.random() < 0.05) {
           const x = Math.random() * canvas.clientWidth;
@@ -91,18 +86,18 @@ export default function App() {
         }
       }
 
-      // if seeds changed state, update
       if (updated) setSeeds([...seeds]);
 
       rafRef.current = requestAnimationFrame(draw);
     };
-    // --- FIN LÓGICA DE CANVAS ---
-    
+    // --- Fin Lógica de Canvas ---
+
     // --- LÓGICA DE EVENTOS TÁCTILES CORREGIDA ---
     const touchElement = touchAreaRef.current;
     if (touchElement) {
-        // 🚨 CORRECCIÓN CLAVE: Añadir el listener de 'touchstart' con passive: false
+        // 🚨 CAMBIO CLAVE: Usa touchstart y mousedown con passive: false
         touchElement.addEventListener("touchstart", handleCanvasDown, { passive: false });
+        touchElement.addEventListener("mousedown", handleCanvasDown, { passive: false });
     }
 
     const handleResize = () => {
@@ -119,14 +114,16 @@ export default function App() {
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener("resize", handleResize);
       
-      // Limpiar el listener de toque también
+      // Limpiar los listeners al desmontar
       if (touchElement) {
          touchElement.removeEventListener("touchstart", handleCanvasDown);
+         touchElement.removeEventListener("mousedown", handleCanvasDown);
       }
     };
   }, [running, seeds, speed, brush, showGrid]); // dependencias
 
-  // ... (Funciones drawGrid, drawPixel, drawRing sin cambios) ...
+  // ... (Funciones drawGrid, drawPixel, drawRing, plantSeed, clear, exportPNG - Sin cambios) ...
+
   function drawGrid(ctx, w, h) {
     ctx.save();
     ctx.globalAlpha = 0.06;
@@ -183,9 +180,6 @@ export default function App() {
     setSeeds((s) => [seed, ...s]);
   };
   
-  // 🚨 handleCanvasDown ya no se declara aquí, se usa la versión de arriba.
-  // La versión original fue movida al inicio para que el listener de useEffect pueda acceder a ella.
-
   const clear = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -225,9 +219,8 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-full">
           <div className="lg:col-span-3 bg-[#03060c] rounded-lg overflow-hidden shadow-inner" style={{minHeight: 480}}>
             <div
-              onMouseDown={handleCanvasDown} // Mantener onMouseDown para clicks de PC/Web
-              // 🚨 CORRECCIÓN CLAVE: Eliminar onTouchStart de React. Ahora se maneja en useEffect.
-              ref={touchAreaRef} // 🚨 CORRECCIÓN CLAVE: Asignar la nueva ref aquí
+              // 🚨 CAMBIO CLAVE: Eliminar onMouseDown. Ahora se maneja en useEffect.
+              ref={touchAreaRef} // Asignar la ref al DIV que envuelve el Canvas
               className="w-full h-full relative"
               style={{cursor: 'crosshair'}}
             >
