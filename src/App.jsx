@@ -2,11 +2,10 @@ import React, { useRef, useEffect, useState } from "react";
 
 // Pixel Garden
 // Una app visual e interactiva: plantas "semillas" haciendo click/tap en el lienzo.
-// Cada semilla crece procedimentalmente en forma de 'bioma' de píxeles que se expanden
-// y cambian color. Ideal para experimentar con patrones generativos y jugar.
 
 export default function App() {
   const canvasRef = useRef(null);
+  const touchAreaRef = useRef(null); // 🚨 CORRECCIÓN CLAVE: Nueva ref para el área de toque/canvas
   const rafRef = useRef(null);
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
@@ -17,6 +16,19 @@ export default function App() {
 
   // Seed structure: { x, y, size, life, hueBase, id }
 
+  // 🚨 CORRECCIÓN CLAVE: Función que maneja el toque/click.
+  const handleCanvasDown = (e) => {
+    // ESTA LÍNEA AHORA FUNCIONARÁ sin la advertencia, ya que el listener no es pasivo.
+    e.preventDefault(); 
+    
+    // Se usa 'e.touches' para eventos táctiles y 'e' para eventos de ratón
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    plantSeed(clientX, clientY);
+  };
+  
+  // 🚨 CORRECCIÓN CLAVE: useEffect para registrar el listener nativo con { passive: false }
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -24,6 +36,7 @@ export default function App() {
     let height = canvas.height = canvas.clientHeight * devicePixelRatio;
     ctx.scale(devicePixelRatio, devicePixelRatio);
 
+    // --- LÓGICA DE CANVAS (RequestAnimationFrame) ---
     const draw = (t) => {
       if (!running) return;
       // clear with slight alpha to create trailing effect
@@ -83,8 +96,14 @@ export default function App() {
 
       rafRef.current = requestAnimationFrame(draw);
     };
-
-    rafRef.current = requestAnimationFrame(draw);
+    // --- FIN LÓGICA DE CANVAS ---
+    
+    // --- LÓGICA DE EVENTOS TÁCTILES CORREGIDA ---
+    const touchElement = touchAreaRef.current;
+    if (touchElement) {
+        // 🚨 CORRECCIÓN CLAVE: Añadir el listener de 'touchstart' con passive: false
+        touchElement.addEventListener("touchstart", handleCanvasDown, { passive: false });
+    }
 
     const handleResize = () => {
       canvas.width = canvas.clientWidth * devicePixelRatio;
@@ -93,12 +112,21 @@ export default function App() {
     };
 
     window.addEventListener("resize", handleResize);
+    
+    rafRef.current = requestAnimationFrame(draw);
+
     return () => {
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener("resize", handleResize);
+      
+      // Limpiar el listener de toque también
+      if (touchElement) {
+         touchElement.removeEventListener("touchstart", handleCanvasDown);
+      }
     };
-  }, [running, seeds, speed, brush, showGrid]);
+  }, [running, seeds, speed, brush, showGrid]); // dependencias
 
+  // ... (Funciones drawGrid, drawPixel, drawRing sin cambios) ...
   function drawGrid(ctx, w, h) {
     ctx.save();
     ctx.globalAlpha = 0.06;
@@ -154,13 +182,9 @@ export default function App() {
     };
     setSeeds((s) => [seed, ...s]);
   };
-
-  const handleCanvasDown = (e) => {
-    e.preventDefault();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    plantSeed(clientX, clientY);
-  };
+  
+  // 🚨 handleCanvasDown ya no se declara aquí, se usa la versión de arriba.
+  // La versión original fue movida al inicio para que el listener de useEffect pueda acceder a ella.
 
   const clear = () => {
     const canvas = canvasRef.current;
@@ -178,9 +202,10 @@ export default function App() {
     a.download = `pixel-garden-${Date.now()}.png`;
     a.click();
   };
-
+  
+  // --- RENDERIZADO JSX ---
   return (
-  <div className="min-h-screen flex flex-col bg-[#03060c] text-slate-100">
+    <div className="min-h-screen flex flex-col bg-[#03060c] text-slate-100">
       <header className="flex items-center justify-between p-4 border-b border-slate-800">
         <h1 className="text-xl font-semibold text-white">Pixel Garden</h1>
         <div className="flex items-center gap-3">
@@ -200,8 +225,9 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-full">
           <div className="lg:col-span-3 bg-[#03060c] rounded-lg overflow-hidden shadow-inner" style={{minHeight: 480}}>
             <div
-              onMouseDown={handleCanvasDown}
-              onTouchStart={handleCanvasDown}
+              onMouseDown={handleCanvasDown} // Mantener onMouseDown para clicks de PC/Web
+              // 🚨 CORRECCIÓN CLAVE: Eliminar onTouchStart de React. Ahora se maneja en useEffect.
+              ref={touchAreaRef} // 🚨 CORRECCIÓN CLAVE: Asignar la nueva ref aquí
               className="w-full h-full relative"
               style={{cursor: 'crosshair'}}
             >
